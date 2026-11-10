@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escala de Atendimento - Senac</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .sticky-col {
+            position: sticky;
+            left: 0;
+            z-index: 20;
+        }
+        .sticky-col-header {
+            position: sticky;
+            left: 0;
+            top: 0;
+            z-index: 30;
+        }
+        .sticky-top {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .print-container { width: 100% !important; max-width: none !important; overflow: visible !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-amber-600 text-white shadow-md no-print">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-calendar-days text-2xl text-amber-200"></i>
+                <div>
+                    <h1 class="font-bold text-xl leading-tight">Escala de Atendimento SENAC</h1>
+                    <p class="text-xs text-amber-100">Gestão de Horários, Férias e Alertas de Cobertura</p>
+                </div>
+            </div>
+
+            <!-- Controls / Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+                <button onclick="togglePrintMode()" class="bg-amber-700 hover:bg-amber-800 text-white px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition font-medium">
+                    <i class="fa-solid fa-camera"></i>
+                    <span>Modo Print / E-mail</span>
+                </button>
+                <button onclick="exportBackup()" class="bg-amber-700 hover:bg-amber-800 text-white px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition font-medium">
+                    <i class="fa-solid fa-download"></i>
+                    <span>Exportar Backup</span>
+                </button>
+                <label class="bg-amber-700 hover:bg-amber-800 text-white px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition font-medium cursor-pointer">
+                    <i class="fa-solid fa-upload"></i>
+                    <span>Importar Backup</span>
+                    <input type="file" id="importFile" onchange="importBackup(event)" class="hidden" accept=".json">
+                </label>
+                <button onclick="resetData()" class="bg-red-700 hover:bg-red-800 text-white px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition font-medium">
+                    <i class="fa-solid fa-rotate"></i>
+                    <span>Restaurar Padrão</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-4 flex flex-col gap-4 print-container">
+
+        <!-- Top Panel: Month Selection & Quick Summary -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-wrap justify-between items-center gap-4 no-print">
+            
+            <!-- Month / Year Selector -->
+            <div class="flex items-center space-x-3">
+                <label class="text-sm font-semibold text-slate-700">Mês / Ano:</label>
+                <input type="month" id="monthPicker" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none" onchange="changeMonthYear()">
+            </div>
+
+            <!-- Day Selector Tabs Scroll -->
+            <div class="flex items-center space-x-1 overflow-x-auto py-1 max-w-full" id="dayTabsContainer">
+                <!-- Day buttons generated via JS -->
+            </div>
+        </div>
+
+        <!-- Print Mode Banner (Visible only in Print Mode) -->
+        <div id="printBanner" class="hidden bg-slate-800 text-white p-3 rounded-lg flex justify-between items-center no-print">
+            <span class="text-sm font-medium"><i class="fa-solid fa-circle-info text-amber-400 mr-2"></i>Modo Print Ativo! As barras de navegação foram ocultadas para facilitar a captura de tela (Win + Shift + S).</span>
+            <button onclick="togglePrintMode()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3 py-1 rounded text-xs">Sair do Modo Print</button>
+        </div>
+
+        <!-- Alert Summary Banner -->
+        <div id="alertBannerContainer" class="hidden flex flex-col gap-2"></div>
+
+        <!-- Action Bar: Add Occurrence & Quick Batch Edit -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 no-print flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                    <i class="fa-solid fa-umbrella-beach text-sky-600"></i>
+                    Lançar Férias, Licenças ou Ocorrências por Período
+                </h3>
+                <p class="text-xs text-slate-5-0 text-slate-500">Selecione o período de datas para atualizar a escala de todos os dias automaticamente.</p>
+            </div>
+
+            <button onclick="openOccurrenceModal()" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold px-4 py-2 rounded-lg shadow-sm flex items-center space-x-2 text-sm transition">
+                <i class="fa-solid fa-plus-circle"></i>
+                <span>Nova Ocorrência / Férias</span>
+            </button>
+        </div>
+
+        <!-- Main Daily Schedule Table (Horizontal Layout) -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+            
+            <div class="bg-slate-800 text-white px-4 py-3 flex justify-between items-center">
+                <h2 id="currentDayTitle" class="font-bold text-lg flex items-center gap-2">
+                    <i class="fa-solid fa-calendar-day text-amber-400"></i>
+                    <span id="dayTitleText">Escala Diária</span>
+                </h2>
+                <div class="flex items-center space-x-3 text-xs">
+                    <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> <span>Balcão</span></span>
+                    <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span> <span>Almoço</span></span>
+                    <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> <span>Alerta / Conflito</span></span>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto relative max-h-[600px]">
+                <table class="w-full text-xs text-left border-collapse" id="scheduleTable">
+                    <thead>
+                        <tr class="bg-slate-900 text-white">
+                            <th class="p-2.5 font-bold border-b border-r border-slate-700 min-w-[130px] sticky-col-header bg-slate-900">Funcionário</th>
+                            <th class="p-2.5 font-semibold border-b border-r border-slate-700 min-w-[110px] text-center sticky-col-header bg-slate-900" style="left: 130px;">Turno</th>
+                            <!-- Time Slot Headers (07:45 to 21:00) generated via JS -->
+                            <th class="p-2.5 font-bold border-b border-slate-700 min-w-[200px] text-center">Observações do Dia</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scheduleTableBody">
+                        <!-- Employee rows generated via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Occurrences List Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 no-print flex flex-col gap-3">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-slate-600"></i>
+                    Ocorrências e Férias Agendadas no Mês
+                </h3>
+                <span class="text-xs text-slate-400" id="occurrencesCount">0 registradas</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left text-slate-600">
+                    <thead class="bg-slate-50 font-semibold text-slate-700">
+                        <tr>
+                            <th class="p-2 border-b">Colaborador</th>
+                            <th class="p-2 border-b text-center">Período (Datas)</th>
+                            <th class="p-2 border-b text-center">Tipo</th>
+                            <th class="p-2 border-b text-center">Horários</th>
+                            <th class="p-2 border-b">Justificativa / Motivo</th>
+                            <th class="p-2 border-b text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="occurrencesTableBody">
+                        <!-- List rows -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Legend Footer -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 no-print">
+            <h4 class="font-bold text-xs text-slate-700 uppercase tracking-wider mb-2">Legenda de Cores e Atividades:</h4>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 text-xs">
+                <div class="p-2 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 font-semibold text-center">Balcão</div>
+                <div class="p-2 rounded bg-indigo-100 text-indigo-900 border border-indigo-300 font-semibold text-center">Telemarketing</div>
+                <div class="p-2 rounded bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-center">Almoço</div>
+                <div class="p-2 rounded bg-orange-100 text-orange-900 border border-orange-300 font-semibold text-center">Consulta Médica</div>
+                <div class="p-2 rounded bg-purple-100 text-purple-900 border border-purple-300 font-semibold text-center">Curso</div>
+                <div class="p-2 rounded bg-rose-100 text-rose-900 border border-rose-300 font-semibold text-center">Atestado</div>
+                <div class="p-2 rounded bg-sky-100 text-sky-900 border border-sky-300 font-semibold text-center">Férias</div>
+                <div class="p-2 rounded bg-slate-200 text-slate-700 border border-slate-300 font-semibold text-center">Folga</div>
+                <div class="p-2 rounded bg-teal-100 text-teal-900 border border-teal-300 font-semibold text-center">Outros</div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Modal Form: Add Occurrence / Férias -->
+    <div id="occurrenceModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-lg w-full overflow-hidden animate-in fade-in zoom-in duration-150">
+            <div class="bg-slate-900 text-white px-5 py-4 flex justify-between items-center">
+                <h3 class="font-bold text-base flex items-center gap-2">
+                    <i class="fa-solid fa-calendar-plus text-amber-400"></i>
+                    Cadastrar Ocorrência / Férias
+                </h3>
+                <button onclick="closeOccurrenceModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="occurrenceForm" onsubmit="saveOccurrence(event)" class="p-5 flex flex-col gap-4">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Colaborador:</label>
+                    <select id="modalEmployee" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
+                        <!-- Employees populated via JS -->
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Data Início (Calendário):</label>
+                        <input type="date" id="modalStartDate" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Data Fim (Calendário):</label>
+                        <input type="date" id="modalEndDate" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Tipo de Ocorrência:</label>
+                    <select id="modalType" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" required>
+                        <option value="Férias">🏖️ Férias</option>
+                        <option value="Atestado">🟥 Atestado Médico</option>
+                        <option value="Consulta Médica">🟧 Consulta Médica / Exame</option>
+                        <option value="Curso">🟪 Curso / Capacitação Senac</option>
+                        <option value="Folga">⬜ Folga / Compensação</option>
+                        <option value="Outros">🟩 Outros / Reunião</option>
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Horário Início:</label>
+                        <select id="modalStartTime" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <!-- Time slots populated via JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Horário Fim:</label>
+                        <select id="modalEndTime" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <!-- Time slots populated via JS -->
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Observações / Motivo:</label>
+                    <input type="text" id="modalObs" placeholder="Ex: Férias regulamentares do período" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button type="button" onclick="closeOccurrenceModal()" class="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-medium transition">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition">Salvar Ocorrência</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // State Constants
+        const EMPLOYEES = [
+            { name: "Tamires", turno: "Manhã/Tarde" },
+            { name: "Gustavo", turno: "Manhã/Tarde" },
+            { name: "Selminha", turno: "Manhã/Tarde" },
+            { name: "Kimi", turno: "Intermediário" },
+            { name: "Rapha", turno: "Tarde/Noite" },
+            { name: "Bia", turno: "Tarde/Noite" },
+            { name: "Thayssa", turno: "Tarde/Noite" },
+            { name: "Eduardo", turno: "Tarde/Noite" }
+        ];
+
+        const TIME_SLOTS = [];
+        (function generateTimeSlots() {
+            let h = 7, m = 45;
+            while (true) {
+                const hh = String(h).padStart(2, '0');
+                const mm = String(m).padStart(2, '0');
+                TIME_SLOTS.push(`${hh}:${mm}`);
+                if (h === 21 && m === 0) break;
+                m += 15;
+                if (m >= 60) { m = 0; h++; }
+            }
+        })();
+
+        const STATUS_COLORS = {
+            "Balcão": { bg: "bg-emerald-100", text: "text-emerald-900", border: "border-emerald-300" },
+            "Telemarketing": { bg: "bg-indigo-100", text: "text-indigo-900", border: "border-indigo-300" },
+            "Almoço": { bg: "bg-amber-100", text: "text-amber-900", border: "border-amber-300" },
+            "Consulta Médica": { bg: "bg-orange-100", text: "text-orange-900", border: "border-orange-300" },
+            "Curso": { bg: "bg-purple-100", text: "text-purple-900", border: "border-purple-300" },
+            "Atestado": { bg: "bg-rose-100", text: "text-rose-900", border: "border-rose-300" },
+            "Férias": { bg: "bg-sky-100", text: "text-sky-900", border: "border-sky-300" },
+            "Folga": { bg: "bg-slate-200", text: "text-slate-700", border: "border-slate-300" },
+            "Outros": { bg: "bg-teal-100", text: "text-teal-900", border: "border-teal-300" }
+        };
+
+        // Global State
+        let currentYear = 2026;
+        let currentMonth = 11; // 1 to 12
+        let currentDay = 10;
+        let occurrences = [];
+        let customSchedule = {}; // Key: YYYY-MM-DD_EmpName_TimeSlot -> Status
+
+        // Default Base Schedule Logic
+        function getDefaultStatus(empName, timeStr) {
+            const [h, m] = timeStr.split(':').map(Number);
+            const t = h + m / 60.0;
+
+            if (empName === "Tamires") {
+                if (t < 7.75 || t >= 16.75) return "Folga";
+                if (t >= 11.5 && t < 12.5) return "Almoço";
+                return "Balcão";
+            } else if (empName === "Gustavo") {
+                if (t < 7.75 || t >= 16.75) return "Folga";
+                if (t >= 12.0 && t < 13.0) return "Almoço";
+                if (t >= 14.0 && t < 16.0) return "Telemarketing";
+                return "Balcão";
+            } else if (empName === "Selminha") {
+                if (t < 7.75 || t >= 16.75) return "Folga";
+                if (t >= 12.75 && t < 13.75) return "Almoço";
+                return "Balcão";
+            } else if (empName === "Kimi") {
+                if (t < 10.0 || t >= 19.0) return "Folga";
+                if (t >= 13.5 && t < 14.5) return "Almoço";
+                if (t >= 15.0 && t < 17.0) return "Telemarketing";
+                return "Balcão";
+            } else if (empName === "Rapha") {
+                if (t < 12.0 || t > 21.0) return "Folga";
+                if (t >= 16.0 && t < 17.0) return "Almoço";
+                return "Balcão";
+            } else if (empName === "Bia") {
+                if (t < 12.0 || t > 21.0) return "Folga";
+                if (t >= 16.75 && t < 17.75) return "Almoço";
+                return "Balcão";
+            } else if (empName === "Thayssa") {
+                if (t < 12.0 || t > 21.0) return "Folga";
+                if (t >= 17.5 && t < 18.5) return "Almoço";
+                if (t >= 13.0 && t < 15.0) return "Telemarketing";
+                return "Balcão";
+            } else if (empName === "Eduardo") {
+                if (t < 12.0 || t > 21.0) return "Folga";
+                if (t >= 18.25 && t < 19.25) return "Almoço";
+                return "Balcão";
+            }
+            return "Balcão";
+        }
+
+        // Init Function
+        window.addEventListener('DOMContentLoaded', () => {
+            loadStateFromStorage();
+            initMonthPicker();
+            renderModalDropdowns();
+            renderDayTabs();
+            renderScheduleTable();
+            renderOccurrencesTable();
+        });
+
+        function loadStateFromStorage() {
+            const savedOcc = localStorage.getItem('senac_escala_occurrences');
+            if (savedOcc) {
+                try { occurrences = JSON.parse(savedOcc); } catch(e){}
+            } else {
+                // Sample initial data
+                occurrences = [
+                    { id: '1', emp: 'Selminha', startDate: '2026-11-10', endDate: '2026-11-20', type: 'Férias', startTime: '07:45', endTime: '21:00', obs: 'Férias regulamentares' },
+                    { id: '2', emp: 'Tamires', startDate: '2026-11-05', endDate: '2026-11-05', type: 'Consulta Médica', startTime: '08:00', endTime: '10:00', obs: 'Exame agendado' },
+                    { id: '3', emp: 'Eduardo', startDate: '2026-11-10', endDate: '2026-11-10', type: 'Curso', startTime: '14:00', endTime: '16:00', obs: 'Capacitação Senac' }
+                ];
+            }
+
+            const savedCustom = localStorage.getItem('senac_escala_custom');
+            if (savedCustom) {
+                try { customSchedule = JSON.parse(savedCustom); } catch(e){}
+            }
+        }
+
+        function saveStateToStorage() {
+            localStorage.setItem('senac_escala_occurrences', JSON.stringify(occurrences));
+            localStorage.setItem('senac_escala_custom', JSON.stringify(customSchedule));
+        }
+
+        function initMonthPicker() {
+            const picker = document.getElementById('monthPicker');
+            const mStr = String(currentMonth).padStart(2, '0');
+            picker.value = `${currentYear}-${mStr}`;
+        }
+
+        function changeMonthYear() {
+            const picker = document.getElementById('monthPicker');
+            if (picker.value) {
+                const [y, m] = picker.value.split('-').map(Number);
+                currentYear = y;
+                currentMonth = m;
+                currentDay = 1;
+                renderDayTabs();
+                renderScheduleTable();
+            }
+        }
+
+        function getDaysInMonth(year, month) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        function formatDateKey(year, month, day) {
+            const mStr = String(month).padStart(2, '0');
+            const dStr = String(day).padStart(2, '0');
+            return `${year}-${mStr}-${dStr}`;
+        }
+
+        function renderDayTabs() {
+            const container = document.getElementById('dayTabsContainer');
+            container.innerHTML = '';
+            const totalDays = getDaysInMonth(currentYear, currentMonth);
+
+            for (let d = 1; d <= totalDays; d++) {
+                const dateObj = new Date(currentYear, currentMonth - 1, d);
+                const weekDayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase();
+                
+                const btn = document.createElement('button');
+                const isSelected = (d === currentDay);
+
+                btn.className = `px-2.5 py-1.5 rounded-lg font-semibold text-xs flex flex-col items-center min-w-[38px] transition ${
+                    isSelected 
+                        ? 'bg-amber-600 text-white shadow' 
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`;
+                btn.onclick = () => selectDay(d);
+
+                btn.innerHTML = `
+                    <span class="text-[10px] opacity-80">${weekDayName}</span>
+                    <span>${String(d).padStart(2, '0')}</span>
+                `;
+                container.appendChild(btn);
+            }
+        }
+
+        function selectDay(d) {
+            currentDay = d;
+            renderDayTabs();
+            renderScheduleTable();
+        }
+
+        // Calculate Cell Status for specific Date, Employee and Time
+        function getCellStatus(dateStr, empName, timeStr) {
+            // Check manually edited cell
+            const cellKey = `${dateStr}_${empName}_${timeStr}`;
+            if (customSchedule[cellKey]) return customSchedule[cellKey];
+
+            // Check Occurrences
+            for (let occ of occurrences) {
+                if (occ.emp === empName) {
+                    if (dateStr >= occ.startDate && dateStr <= occ.endDate) {
+                        if (timeStr >= occ.startTime && timeStr < occ.endTime) {
+                            return occ.type;
+                        }
+                    }
+                }
+            }
+
+            // Fallback to default schedule
+            return getDefaultStatus(empName, timeStr);
+        }
+
+        // Render Table & Alerta Check
+        function renderScheduleTable() {
+            const dateStr = formatDateKey(currentYear, currentMonth, currentDay);
+            const dateObj = new Date(currentYear, currentMonth - 1, currentDay);
+            const fullDateText = dateObj.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            document.getElementById('dayTitleText').innerText = `Dia ${String(currentDay).padStart(2, '0')} - ${fullDateText}`;
+
+            const table = document.getElementById('scheduleTable');
+            const tbody = document.getElementById('scheduleTableBody');
+            
+            // Build Table Header Time Slots
+            const theadTr = table.querySelector('thead tr');
+            // Keep first two headers (Emp, Turno), replace time slots and obs
+            while (theadTr.children.length > 2) {
+                theadTr.removeChild(theadTr.lastChild);
+            }
+
+            TIME_SLOTS.forEach(slot => {
+                const th = document.createElement('th');
+                th.className = "p-2 font-bold border-b border-r border-slate-700 text-center min-w-[55px] text-[11px]";
+                th.innerText = slot;
+                theadTr.appendChild(th);
+            });
+
+            const thObs = document.createElement('th');
+            thObs.className = "p-2 font-bold border-b border-slate-700 min-w-[200px] text-center";
+            thObs.innerText = "Observações do Dia";
+            theadTr.appendChild(thObs);
+
+            // Compute Grid Matrix & Check Alerts
+            const gridData = {}; // emp -> time -> status
+            const timeCounts = {}; // time -> { balcao: n, almoco: n }
+
+            TIME_SLOTS.forEach(t => { timeCounts[t] = { balcao: 0, almoco: 0 }; });
+
+            EMPLOYEES.forEach(emp => {
+                gridData[emp.name] = {};
+                TIME_SLOTS.forEach(t => {
+                    const status = getCellStatus(dateStr, emp.name, t);
+                    gridData[emp.name][t] = status;
+                    if (status === "Balcão") timeCounts[t].balcao++;
+                    if (status === "Almoço") timeCounts[t].almoco++;
+                });
+            });
+
+            // Generate Alerts Banner
+            const alertBanner = document.getElementById('alertBannerContainer');
+            alertBanner.innerHTML = '';
+            let hasAlert = false;
+
+            const balcaoAlertSlots = TIME_SLOTS.filter(t => timeCounts[t].balcao < 2);
+            const almocoAlertSlots = TIME_SLOTS.filter(t => timeCounts[t].almoco > 1);
+
+            if (balcaoAlertSlots.length > 0) {
+                hasAlert = true;
+                const div = document.createElement('div');
+                div.className = "bg-rose-50 border-l-4 border-rose-500 p-3 rounded-r-lg text-rose-800 text-xs font-medium flex items-center justify-between shadow-sm";
+                div.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-triangle-exclamation text-base text-rose-600"></i>
+                        <span><strong>ALERTA DE BALCÃO:</strong> Foram detectados horários com menos de 2 atendentes no Balcão (${balcaoAlertSlots.slice(0, 5).join(', ')}${balcaoAlertSlots.length > 5 ? '...' : ''}).</span>
+                    </div>
+                `;
+                alertBanner.appendChild(div);
+            }
+
+            if (almocoAlertSlots.length > 0) {
+                hasAlert = true;
+                const div = document.createElement('div');
+                div.className = "bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-lg text-amber-900 text-xs font-medium flex items-center justify-between shadow-sm";
+                div.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-utensils text-base text-amber-600"></i>
+                        <span><strong>ALERTA DE ALMOÇO SIMULTÂNEO:</strong> Há 2 ou mais funcionários em pausa para almoço no mesmo horário (${almocoAlertSlots.slice(0, 5).join(', ')}${almocoAlertSlots.length > 5 ? '...' : ''}).</span>
+                    </div>
+                `;
+                alertBanner.appendChild(div);
+            }
+
+            alertBanner.className = hasAlert ? "flex flex-col gap-2" : "hidden";
+
+            // Render Tbody Rows
+            tbody.innerHTML = '';
+            EMPLOYEES.forEach((emp, rIdx) => {
+                const tr = document.createElement('tr');
+                tr.className = rIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60";
+
+                // Emp Name Column
+                const tdName = document.createElement('td');
+                tdName.className = "p-2 font-bold border-b border-r border-slate-200 sticky-col bg-inherit text-slate-800";
+                tdName.innerText = emp.name;
+                tr.appendChild(tdName);
+
+                // Turno Column
+                const tdTurno = document.createElement('td');
+                tdTurno.className = "p-2 text-xs border-b border-r border-slate-200 text-center sticky-col text-slate-500 bg-inherit";
+                tdTurno.style.left = "130px";
+                tdTurno.innerText = emp.turno;
+                tr.appendChild(tdTurno);
+
+                // Time Slots Cells
+                TIME_SLOTS.forEach(t => {
+                    const status = gridData[emp.name][t];
+                    const td = document.createElement('td');
+                    
+                    let bgStyle = STATUS_COLORS[status] ? `${STATUS_COLORS[status].bg} ${STATUS_COLORS[status].text}` : "bg-white text-slate-800";
+                    let isConflict = false;
+
+                    // Red Alert Logic for Conflicts
+                    if (status === "Almoço" && timeCounts[t].almoco > 1) {
+                        bgStyle = "bg-red-500 text-white font-bold animate-pulse";
+                        isConflict = true;
+                    } else if (status === "Balcão" && timeCounts[t].balcao < 2) {
+                        bgStyle = "bg-rose-600 text-white font-bold";
+                        isConflict = true;
+                    }
+
+                    td.className = `p-1.5 border-b border-r border-slate-200 text-center cursor-pointer transition select-none ${bgStyle}`;
+                    td.title = `${emp.name} (${t}): ${status}${isConflict ? ' - CONFLITO / ALERTA' : ''}`;
+
+                    // Click to cycle or edit cell
+                    td.onclick = () => cycleCellStatus(dateStr, emp.name, t, status);
+
+                    td.innerText = status === "Balcão" ? "Balcão" : status;
+                    tr.appendChild(td);
+                });
+
+                // Obs Column
+                const tdObs = document.createElement('td');
+                tdObs.className = "p-1.5 border-b border-slate-200";
+                const obsInput = document.createElement('input');
+                obsInput.type = "text";
+                obsInput.placeholder = "Anotação...";
+                obsInput.className = "w-full text-xs p-1 bg-transparent border-none focus:ring-1 focus:ring-amber-500 rounded";
+                const obsKey = `${dateStr}_${emp.name}_obs`;
+                obsInput.value = customSchedule[obsKey] || "";
+                obsInput.onchange = (e) => {
+                    customSchedule[obsKey] = e.target.value;
+                    saveStateToStorage();
+                };
+                tdObs.appendChild(obsInput);
+                tr.appendChild(tdObs);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Cycle Cell Status on click
+        function cycleCellStatus(dateStr, empName, timeStr, currentStatus) {
+            const statusList = ["Balcão", "Telemarketing", "Almoço", "Consulta Médica", "Curso", "Atestado", "Férias", "Folga", "Outros"];
+            const nextIdx = (statusList.indexOf(currentStatus) + 1) % statusList.length;
+            const newStatus = statusList[nextIdx];
+
+            const cellKey = `${dateStr}_${empName}_${timeStr}`;
+            customSchedule[cellKey] = newStatus;
+            saveStateToStorage();
+            renderScheduleTable();
+        }
+
+        // Modal Handler
+        function openOccurrenceModal() {
+            document.getElementById('occurrenceModal').classList.remove('hidden');
+        }
+
+        function closeOccurrenceModal() {
+            document.getElementById('occurrenceModal').classList.add('hidden');
+        }
+
+        function renderModalDropdowns() {
+            const empSelect = document.getElementById('modalEmployee');
+            empSelect.innerHTML = '';
+            EMPLOYEES.forEach(emp => {
+                const opt = document.createElement('option');
+                opt.value = emp.name;
+                opt.innerText = `${emp.name} (${emp.turno})`;
+                empSelect.appendChild(opt);
+            });
+
+            const startTSelect = document.getElementById('modalStartTime');
+            const endTSelect = document.getElementById('modalEndTime');
+            startTSelect.innerHTML = '';
+            endTSelect.innerHTML = '';
+
+            TIME_SLOTS.forEach(t => {
+                const opt1 = document.createElement('option');
+                opt1.value = t; opt1.innerText = t;
+                startTSelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = t; opt2.innerText = t;
+                endTSelect.appendChild(opt2);
+            });
+
+            // Default start & end time
+            startTSelect.value = "07:45";
+            endTSelect.value = "21:00";
+
+            // Default dates
+            const dateStr = formatDateKey(currentYear, currentMonth, currentDay);
+            document.getElementById('modalStartDate').value = dateStr;
+            document.getElementById('modalEndDate').value = dateStr;
+        }
+
+        function saveOccurrence(e) {
+            e.preventDefault();
+            const emp = document.getElementById('modalEmployee').value;
+            const startDate = document.getElementById('modalStartDate').value;
+            const endDate = document.getElementById('modalEndDate').value;
+            const type = document.getElementById('modalType').value;
+            const startTime = document.getElementById('modalStartTime').value;
+            const endTime = document.getElementById('modalEndTime').value;
+            const obs = document.getElementById('modalObs').value;
+
+            if (startDate > endDate) {
+                alert('A Data Início não pode ser maior que a Data Fim!');
+                return;
+            }
+
+            const newOcc = {
+                id: Date.now().toString(),
+                emp, startDate, endDate, type, startTime, endTime, obs
+            };
+
+            occurrences.push(newOcc);
+            saveStateToStorage();
+            closeOccurrenceModal();
+            renderOccurrencesTable();
+            renderScheduleTable();
+        }
+
+        function deleteOccurrence(id) {
+            if (confirm('Deseja realmente remover esta ocorrência?')) {
+                occurrences = occurrences.filter(o => o.id !== id);
+                saveStateToStorage();
+                renderOccurrencesTable();
+                renderScheduleTable();
+            }
+        }
+
+        function renderOccurrencesTable() {
+            const tbody = document.getElementById('occurrencesTableBody');
+            tbody.innerHTML = '';
+
+            document.getElementById('occurrencesCount').innerText = `${occurrences.length} registradas`;
+
+            if (occurrences.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-slate-400 italic">Nenhuma ocorrência ou férias agendadas.</td></tr>`;
+                return;
+            }
+
+            occurrences.forEach(occ => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 border-b border-slate-100";
+                
+                const formatD = (dStr) => {
+                    const [y, m, d] = dStr.split('-');
+                    return `${d}/${m}/${y}`;
+                };
+
+                tr.innerHTML = `
+                    <td class="p-2 font-bold text-slate-800">${occ.emp}</td>
+                    <td class="p-2 text-center text-slate-600 font-medium">${formatD(occ.startDate)} até ${formatD(occ.endDate)}</td>
+                    <td class="p-2 text-center"><span class="px-2 py-0.5 rounded text-[11px] font-semibold ${STATUS_COLORS[occ.type]?.bg || 'bg-slate-100'} ${STATUS_COLORS[occ.type]?.text || 'text-slate-800'}">${occ.type}</span></td>
+                    <td class="p-2 text-center text-slate-500">${occ.startTime} às ${occ.endTime}</td>
+                    <td class="p-2 text-slate-600">${occ.obs || '-'}</td>
+                    <td class="p-2 text-center">
+                        <button onclick="deleteOccurrence('${occ.id}')" class="text-rose-600 hover:text-rose-800 font-semibold p-1" title="Excluir Ocorrência">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Print Mode Toggle
+        function togglePrintMode() {
+            document.body.classList.toggle('print-mode');
+            const banner = document.getElementById('printBanner');
+            banner.classList.toggle('hidden');
+        }
+
+        // Backup Export / Import / Reset
+        function exportBackup() {
+            const data = {
+                occurrences,
+                customSchedule,
+                version: "1.0",
+                exportDate: new Date().toISOString()
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `escala_senac_backup_${currentYear}_${currentMonth}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.occurrences && data.customSchedule) {
+                        occurrences = data.occurrences;
+                        customSchedule = data.customSchedule;
+                        saveStateToStorage();
+                        renderOccurrencesTable();
+                        renderScheduleTable();
+                        alert('Backup importado com sucesso!');
+                    } else {
+                        alert('Arquivo JSON inválido!');
+                    }
+                } catch (err) {
+                    alert('Erro ao carregar o arquivo de backup.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function resetData() {
+            if (confirm('Atenção: Isso irá restaurar as configurações originais e limpar as edições customizadas. Continuar?')) {
+                localStorage.removeItem('senac_escala_occurrences');
+                localStorage.removeItem('senac_escala_custom');
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
